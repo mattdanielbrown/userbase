@@ -1,6 +1,6 @@
 import { getRandomString, constructNextPageToken } from '../../support/utils'
 
-function signUp(testReference, email, profile) {
+function signUp(testReference, email, profile, username = 'test-user-' + getRandomString()) {
   return cy.visit('./cypress/integration/index.html').then(function (win) {
     expect(win).to.have.property('userbase')
     const userbase = win.userbase
@@ -10,7 +10,6 @@ function signUp(testReference, email, profile) {
     win._userbaseEndpoint = endpoint
     userbase.init({ appId: testReference.appId })
 
-    const randomUser = 'test-user-' + getRandomString()
     const password = getRandomString()
     const rememberMe = 'none'
 
@@ -18,7 +17,7 @@ function signUp(testReference, email, profile) {
       return new Cypress.Promise((resolve, reject) => {
         userbase
           .signUp({
-            username: randomUser,
+            username,
             password,
             rememberMe,
             email,
@@ -31,7 +30,7 @@ function signUp(testReference, email, profile) {
 
     cy.wrap(null).then(() => {
       return signUpWrapper().then((user) => {
-        testReference.username = randomUser
+        testReference.username = username
         testReference.password = password
         testReference.userId = user.userId
       })
@@ -332,6 +331,95 @@ describe('ListUsers', function () {
           signUp(this.test, email, profile).then(function () {
             const userIdUserB = this.test.userId
             const usernameUserB = this.test.username
+
+            // list users should return both users
+            cy
+              .request({
+                method: 'GET',
+                url: APP_ENDPOINT + appId + '/users',
+                auth: {
+                  bearer: accessToken
+                }
+              })
+              .then(function (response) {
+                expect(response.status, 'status').to.eq(200)
+                expect(response.body, 'list users result keys').to.have.keys(['users'])
+                expect(response.body.users, 'users array').to.have.length(2)
+
+                let actualUserA, actualUserB, tokenUsername, expectedPaginatedUser
+                if (response.body.users[0].username === usernameUserA) {
+                  actualUserA = response.body.users[0]
+                  actualUserB = response.body.users[1]
+                  tokenUsername = usernameUserA
+                  expectedPaginatedUser = actualUserB
+                } else {
+                  actualUserA = response.body.users[1]
+                  actualUserB = response.body.users[0]
+                  tokenUsername = usernameUserB
+                  expectedPaginatedUser = actualUserA
+                }
+
+                // check users are correct
+                expect(actualUserA, 'user A keys').to.have.keys(['username', 'userId', 'appId', 'email', 'profile', 'creationDate'])
+                expect(actualUserA.username, 'user A username').to.eq(usernameUserA)
+                expect(actualUserA.userId, 'user A userId').to.eq(userIdUserA)
+                expect(actualUserA.appId, 'user A appId').to.eq(appId)
+                expect(actualUserA.email, 'user A email').to.eq(email)
+                expect(actualUserA.profile, 'user A profile').to.deep.eq(profile)
+
+                expect(actualUserB, 'user B keys').to.have.keys(['username', 'userId', 'appId', 'email', 'profile', 'creationDate'])
+                expect(actualUserB.username, 'user B username').to.eq(usernameUserB)
+                expect(actualUserB.userId, 'user B userId').to.eq(userIdUserB)
+                expect(actualUserB.appId, 'user B appId').to.eq(appId)
+                expect(actualUserB.email, 'user B email').to.eq(email)
+                expect(actualUserB.profile, 'user B profile').to.deep.eq(profile)
+
+                const nextPageToken = constructNextPageToken({ username: tokenUsername, 'app-id': appId })
+
+                // list users with next page token should return 1 user
+                cy
+                  .request({
+                    method: 'GET',
+                    url: APP_ENDPOINT + appId + '/users?nextPageToken=' + nextPageToken,
+                    auth: {
+                      bearer: accessToken
+                    }
+                  })
+                  .then(function (response) {
+                    expect(response.status, 'status').to.eq(200)
+                    expect(response.body, 'paginated users result keys').to.have.keys(['users'])
+                    expect(response.body.users, 'paginated users array').to.have.length(1)
+                    expect(response.body.users[0], 'paginated user').to.deep.equal(expectedPaginatedUser)
+
+                    cy.request({ method: 'POST', url: DELETE_ADMIN_ENDPOINT })
+                  })
+              })
+          })
+        })
+      })
+    })
+
+    it('Pagination Token with Emoji', function () {
+      createAdmin(this.test).then(function () {
+        const email = 'fake@email.com'
+        const profile = { hello: 'world!' }
+
+        // sign up User A
+        const usernameUserA = 'test-user-' + getRandomString() + '-😭'
+        signUp(this.test, email, profile, usernameUserA).then(function () {
+          const {
+            appId,
+            accessToken
+          } = this.test
+
+          const userIdUserA = this.test.userId
+          expect(this.test.username, 'usernameA').to.eq(usernameUserA)
+
+          // sign up User B
+          const usernameUserB = 'test-user-' + getRandomString() + '-😭'
+          signUp(this.test, email, profile, usernameUserB).then(function () {
+            const userIdUserB = this.test.userId
+            expect(this.test.username, 'usernameB').to.eq(usernameUserB)
 
             // list users should return both users
             cy

@@ -116,7 +116,8 @@ export const getMsUntil1AmPst = () => {
 // convert last evaluated key to a base64 string so it does not confuse developer
 export const lastEvaluatedKeyToNextPageToken = (lastEvaluatedKey) => {
   const lastEvaluatedKeyString = JSON.stringify(lastEvaluatedKey)
-  const base64LastEvaluatedKey = Buffer.from(lastEvaluatedKeyString).toString('base64')
+  // DDB stores strings as utf-8
+  const base64LastEvaluatedKey = Buffer.from(lastEvaluatedKeyString, 'utf-8').toString('base64')
   return base64LastEvaluatedKey
 }
 
@@ -124,7 +125,7 @@ export const nextPageTokenToLastEvaluatedKey = (nextPageToken, validateLastEvalu
   try {
     if (!nextPageToken) return null
 
-    const lastEvaluatedKeyString = Buffer.from(nextPageToken, 'base64').toString('ascii')
+    const lastEvaluatedKeyString = Buffer.from(nextPageToken, 'base64').toString('utf-8')
     const lastEvaluatedKey = JSON.parse(lastEvaluatedKeyString)
 
     if (validateLastEvaluatedKey) validateLastEvaluatedKey(lastEvaluatedKey)
